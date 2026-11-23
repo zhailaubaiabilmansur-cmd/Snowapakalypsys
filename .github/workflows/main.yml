@@ -1,0 +1,115 @@
+
+name: Create Snow Apocalypse Video
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  create-video:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install pillow
+
+      - name: Generate MP4
+        run: |
+          cat > create_video.py <<'PY'
+          from PIL import Image, ImageDraw
+          import math, random, os
+
+          W, H = 1280, 720
+          FPS = 20
+          TOTAL = 200
+          os.makedirs("frames", exist_ok=True)
+          random.seed(12)
+
+          snow = [
+              (random.randrange(W), random.randrange(H),
+               random.uniform(2, 5), random.uniform(2, 7))
+              for _ in range(150)
+          ]
+
+          for frame in range(TOTAL):
+              img = Image.new("RGB", (W, H), (12, 22, 38))
+              d = ImageDraw.Draw(img)
+
+              # Frozen sky
+              d.rectangle((0, 0, W, 510), fill=(17, 34, 55))
+
+              # Moon
+              d.ellipse((980, 65, 1090, 175), fill=(205, 225, 238))
+
+              # Distant city
+              buildings = [
+                  (0, 310, 130, 510), (145, 260, 260, 510),
+                  (280, 350, 390, 510), (410, 290, 540, 510),
+                  (560, 340, 680, 510), (700, 260, 830, 510),
+                  (850, 325, 970, 510), (990, 285, 1120, 510),
+                  (1140, 350, 1280, 510)
+              ]
+              for x1, y1, x2, y2 in buildings:
+                  d.rectangle((x1, y1, x2, y2), fill=(35, 53, 72))
+                  for wx in range(x1 + 15, x2 - 10, 30):
+                      for wy in range(y1 + 20, y2 - 15, 40):
+                          d.rectangle((wx, wy, wx+8, wy+12),
+                                      fill=(110, 139, 151))
+
+              # Snow-covered ground outside
+              d.rectangle((0, 500, W, 550), fill=(205, 224, 235))
+
+              # Snowstorm
+              for x, y, speed, drift in snow:
+                  sx = int((x - frame * drift) % W)
+                  sy = int((y + frame * speed) % H)
+                  d.ellipse((sx, sy, sx+4, sy+4), fill=(245, 250, 255))
+
+              # Shelter interior
+              d.rectangle((0, 550, W, H), fill=(49, 39, 35))
+              d.rectangle((0, 545, W, 565), fill=(100, 83, 70))
+
+              # Window frame
+              d.rectangle((110, 75, 1170, 535), outline=(95, 75, 62), width=22)
+              d.line((640, 80, 640, 530), fill=(95, 75, 62), width=16)
+              d.line((115, 300, 1165, 300), fill=(95, 75, 62), width=16)
+
+              # Stickman
+              bob = int(math.sin(frame / 12) * 4)
+              cx, cy = 360, 490 + bob
+              d.ellipse((cx-25, cy-115, cx+25, cy-65),
+                        outline=(235, 235, 235), width=7)
+              d.line((cx, cy-65, cx, cy+20), fill="white", width=8)
+              d.line((cx, cy-35, cx-42, cy+5), fill="white", width=7)
+              d.line((cx, cy-35, cx+42, cy+5), fill="white", width=7)
+              d.line((cx, cy+20, cx-30, cy+75), fill="white", width=8)
+              d.line((cx, cy+20, cx+30, cy+75), fill="white", width=8)
+
+              # Heater
+              d.rectangle((850, 570, 1040, 680), fill=(75, 79, 83))
+              for x in range(870, 1030, 30):
+                  d.rectangle((x, 585, x+15, 660), fill=(140, 147, 151))
+              d.ellipse((900, 620, 990, 655), fill=(245, 125, 55))
+
+              # Title and HUD
+              d.rectangle((20, 18, 290, 65), fill=(15, 25, 38))
+              d.text((35, 29), "DAY 1  |  22:55", fill="white")
+              d.text((1010, 30), "-32 C", fill=(180, 225, 255))
+
+              img.save(f"frames/frame_{frame:04d}.png")
+
+          PY
+
+          ffmpeg -y -framerate 20 -i frames/frame_%04d.png \
+            -c:v libx264 -pix_fmt yuv420p \
+            -movflags +faststart snow_apocalypse.mp4
+
+      - name: Upload MP4 video
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snow-Apocalypse-MP4
+          path: snow_apocalypse.mp4
